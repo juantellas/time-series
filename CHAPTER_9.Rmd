@@ -1,0 +1,369 @@
+---
+title: "MODELOS PREDICTIVOS (SECCION 9)"
+output: html_document
+date: "2024-04-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# CHAPTER 9: FORECASTING with Linear Regression
+
+## I: Features engineering of the series components
+
+### 1
+
+```{r}
+library(TSstudio)
+
+data("USgas")
+
+ts_plot(USgas,
+        title = "US Monthly Natural Gas consumption",
+        Ytitle = "Billion Cubic Feet",
+        Xtitle = "Year")
+
+ts_info(USgas)
+
+```
+
+
+```{r}
+ts_decompose(USgas)
+```
+
+```{r}
+USgas_df <- ts_to_prophet(USgas)
+head(USgas_df)
+USgas_df$trend <- 1:nrow(USgas_df)
+```
+
+### 2
+
+```{r}
+library(lubridate)
+
+USgas_df$seasonal <- month(USgas_df$ds, label = T)
+```
+
+```{r}
+head(USgas_df)
+```
+
+```{r}
+h <- 12 # setting a testing partition length
+
+train <- USgas_df[1:(nrow(USgas_df) - h), ]
+
+test <- USgas_df[(nrow(USgas_df) - h + 1):nrow(USgas_df), ]
+```
+
+##  II: Modeling the series trend and seasonal components
+
+### 1
+
+```{r}
+md_trend <- lm(y ~ trend, data = train)
+
+summary(md_trend)
+```
+
+### 2
+
+```{r}
+train$yhat <- predict(md_trend, newdata = train)
+
+test$yhat <- predict(md_trend, newdata = test)
+
+library(plotly)
+plot_lm <- function(data, train, test, title = NULL){
+  p <- plot_ly(data = data, 
+               x = ~ ds, 
+               y = ~ y, 
+               type = "scatter",
+               mode = "line",
+               name = "Actual") %>%
+    add_lines(x =  ~ train$ds,
+              y = ~ train$yhat,
+              line = list(color = "red"),
+              name = "Fitted") %>%
+    add_lines(x =  ~ test$ds,
+              y = ~ test$yhat,
+              line = list(color = "green", dash = "dot", width = 3),
+              name = "Forecasted") %>%
+    layout(title = title,
+           xaxis = list(title = ""),
+           yaxis = list(title = "Billion Cubic Feet"),
+           legend = list(x = 0.05, y = 0.95))
+  return(p)
+}
+```
+
+```{r}
+plot_lm(data = USgas_df, 
+        train = train, 
+        test = test,
+        title = "Predicting the Trend Component of the Series")
+```
+
+```{r}
+mape_trend <- c(mean(abs(train$y - train$yhat) / train$y),
+                mean(abs(test$y - test$yhat) / test$y))
+
+mape_trend
+```
+### 3
+
+
+```{r}
+md_seasonal <- lm(y ~ seasonal, data = train)
+
+summary(md_seasonal)
+```
+
+```{r}
+train$yhat <- predict(md_seasonal, newdata = train)
+test$yhat <- predict(md_seasonal, newdata = test)
+
+plot_lm(data = USgas_df, 
+        train = train, 
+        test = test,
+        title = "Predicting the Seasonal Component of the Series")
+```
+
+```{r}
+mape_seasonal <- c(mean(abs(train$y - train$yhat) / train$y),
+                   mean(abs(test$y - test$yhat) / test$y))
+
+mape_seasonal
+```
+
+
+### 4
+
+
+```{r}
+md1 <- lm(y ~ seasonal + trend, data = train)
+
+summary(md1)
+```
+
+```{r}
+train$yhat <- predict(md1, newdata = train)
+test$yhat <- predict(md1, newdata = test)
+
+
+plot_lm(data = USgas_df, 
+        train = train, 
+        test = test,
+        title = "Predicting the Seasonal Component of the Series")
+```
+
+```{r}
+mape_md1 <- c(mean(abs(train$y - train$yhat) / train$y),
+              mean(abs(test$y - test$yhat) / test$y))
+mape_md1
+```
+
+### 5
+
+```{r}
+md2 <- lm(y ~ seasonal + trend + I(trend^2), data = train)
+
+summary(md2)
+```
+
+```{r}
+train$yhat <- predict(md2, newdata = train)
+test$yhat <- predict(md2, newdata = test)
+
+
+plot_lm(data = USgas_df, 
+        train = train, 
+        test = test,
+        title = "Predicting the Seasonal Component of the Series")
+
+mape_md2 <- c(mean(abs(train$y - train$yhat) / train$y),
+              mean(abs(test$y - test$yhat) / test$y))
+
+mape_md2
+```
+
+## III: The tslm function
+
+### 1: Modeling single events and non-seasonal events
+
+```{r}
+USgas_split <- ts_split(USgas, sample.out = h)
+
+train.ts <- USgas_split$train
+
+test.ts <- USgas_split$test
+```
+
+```{r}
+library(forecast)
+
+md3 <- tslm(train.ts ~ season + trend + I(trend^2))
+
+summary(md3)
+```
+
+```{r}
+r <- which(USgas_df$ds == as.Date("2014-01-01"))
+USgas_df$s_break <- ifelse(year(USgas_df$ds) >= 2010, 1, 0)
+USgas_df$s_break[r] <- 1
+md3 <- tslm(USgas ~ season + trend + I(trend^2) + s_break, data = USgas_df)
+summary(md3)
+```
+### 2: The UKgrid series
+
+```{r}
+library(UKgrid)
+
+UKdaily <- extract_grid(type = "data.frame",
+                        columns = "ND",
+                        aggregate = "daily")
+
+head(UKdaily)
+```
+```{r}
+ts_plot(UKdaily,
+        title = "The UK National Demand for Electricity",
+        Ytitle = "MW",
+        Xtitle = "Year")
+```
+
+
+```{r}
+ts_heatmap(UKdaily[which(year(UKdaily$TIMESTAMP) >= 2016),],
+           title = "UK the Daily National Grid Demand Heatmap")
+```
+### 3: Preprocessing and feature engineering of the UKdaily series
+
+```{r}
+library(dplyr)
+UKdaily <- UKdaily %>%
+  mutate(wday = wday(TIMESTAMP, label = TRUE),
+         month = month(TIMESTAMP, label = TRUE),
+         lag365 = dplyr::lag(ND, 365)) %>%
+  filter(!is.na(lag365)) %>%
+  arrange(TIMESTAMP)
+str(UKdaily)
+
+```
+### 4
+
+```{r}
+start_date <- min(UKdaily$TIMESTAMP)
+
+
+UK_ts <- ts(UKdaily$ND, 
+            start = c(year(start_date), yday(start_date)),
+            frequency = 365)
+```
+
+```{r}
+#ts_acf(UK_ts, lag.max = 365 * 4)
+```
+```{r}
+h <-  365
+UKpartitions <- ts_split(UK_ts, sample.out = h)
+train_ts <- UKpartitions$train
+test_ts <- UKpartitions$test
+
+train_df <- UKdaily[1:(nrow(UKdaily) - h), ]
+test_df <- UKdaily[(nrow(UKdaily) - h + 1):nrow(UKdaily), ]
+```
+
+## IV: Training and testing the forecasting model
+
+### 1
+```{r}
+md_tslm1 <- tslm(train_ts ~ season + trend)
+fc_tslm1 <- forecast(md_tslm1, h = h)
+
+test_forecast(actual = UK_ts,
+              forecast.obj = fc_tslm1,
+              test = test_ts)
+```
+```{r}
+accuracy(fc_tslm1, test_ts)
+```
+ 
+### 2
+
+```{r}
+md_tslm2 <- tslm(train_ts ~ season + trend + wday, data = train_df)
+fc_tslm2 <- forecast(md_tslm2, h = h, newdata = test_df)
+
+test_forecast(actual = UK_ts,
+              forecast.obj = fc_tslm2,
+              test = test_ts)
+```
+
+
+```{r}
+accuracy(fc_tslm2, test_ts)
+```
+
+### 3
+
+```{r}
+md_tslm3 <- tslm(train_ts ~ season + trend + wday + month + lag365, data = train_df)
+fc_tslm3 <- forecast(md_tslm3, h = h, newdata = test_df)
+
+test_forecast(actual = UK_ts,
+              forecast.obj = fc_tslm3,
+              test = test_ts)
+```
+
+```{r}
+accuracy(fc_tslm3, test_ts) 
+```
+
+## V: Model selection
+
+### 1: Residuals analysis
+
+```{r}
+summary(md_tslm3)$coefficients %>% tail(1)
+```
+```{r}
+anova(md_tslm3)
+```
+
+```{r}
+final_md <- tslm(UK_ts ~ season + trend + wday + month + lag365, 
+                 data = UKdaily)
+```
+
+```{r}
+checkresiduals(final_md)
+```
+
+### 2: Finalizing the forecast
+
+```{r}
+UK_fc_df <- data.frame(date = seq.Date(from = max(UKdaily$TIMESTAMP) + days(1), 
+                                       by = "day", 
+                                       length.out = h))
+
+UK_fc_df$wday <- factor(lubridate::wday(UK_fc_df$date, label = TRUE), ordered = FALSE)
+
+UK_fc_df$month <- factor(month(UK_fc_df$date, label = TRUE), ordered = FALSE)
+
+UK_fc_df$lag365 <- tail(UKdaily$ND, h)
+
+UKgrid_fc <- forecast(final_md, h = h, newdata = UK_fc_df)
+
+```
+
+```{r}
+plot_forecast(UKgrid_fc,
+              title = "The UK National Demand for Electricity Forecast",
+              Ytitle = "MW",
+              Xtitle = "Year")
+```
+

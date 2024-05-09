@@ -1,0 +1,177 @@
+---
+title: "MODELOS PREDICTIVOS (SECCION 8)"
+output: html_document
+date: "2024-04-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# CHAPTER 8: FORECASTING STRATEGIES
+
+## I: Training with single training and testing partitions
+
+### 1: Training approaches
+
+```{r}
+library(TSstudio)
+
+data(USgas)
+
+ts_info(USgas)
+
+```
+```{r}
+train <- window(USgas, 
+                start = time(USgas)[1], 
+                end = time(USgas)[length(USgas) - 12])
+
+test <- window(USgas, 
+               start = time(USgas)[length(USgas) - 12 + 1], 
+               end = time(USgas)[length(USgas)])
+
+```
+
+```{r}
+ts_info(train)
+```
+
+```{r}
+ts_info(test)
+```
+
+### 2: Forecasting with backtesting
+
+```{r}
+USgas_partitions <- ts_split(USgas, sample.out = 12)
+
+train <- USgas_partitions$train
+test <- USgas_partitions$test
+```
+
+```{r}
+ts_info(train)
+```
+
+```{r}
+ts_info(test)
+```
+## II: Forecasting evaluation
+
+### 1: Residual analysis
+```{r}
+library(forecast)
+
+md <- auto.arima(train)
+checkresiduals(md)
+```
+### 2: Scoring the forecast
+```{r}
+fc <- forecast(md, h = 12)
+accuracy(fc, test)
+```
+### 3: Forecast bencharmk
+```{r}
+test_forecast(actual = USgas,
+              forecast.obj = fc,
+              test = test) 
+```
+
+### 4
+
+```{r}
+naive_model <- naive(train, h  = 12)
+test_forecast(actual = USgas,
+              forecast.obj = naive_model,
+              test = test)
+
+accuracy(naive_model, test)
+```
+
+### 5
+```{r}
+snaive_model <- snaive(train, h = 12)
+test_forecast(actual = USgas,
+              forecast.obj = snaive_model,
+              test = test)
+
+accuracy(snaive_model, test)
+```
+
+## III: Finalizing the forecast
+
+### 1: Handling forcast uncertainty
+
+```{r}
+md_final <- auto.arima(USgas)
+
+fc_final <- forecast(md_final, h = 12)
+
+plot_forecast(fc_final,
+              title = "The US Natural Gas Consumption Forecast",
+              Xtitle = "Year",
+              Ytitle = "Billion Cubic Feet")
+
+```
+
+### 2: Simulation
+
+```{r}
+fc_final2 <- forecast(md_final, 
+                      h = 60, 
+                      level = c(80, 90))
+
+plot_forecast(fc_final2,
+              title = "The US Natural Gas Consumption Forecast",
+              Xtitle = "Year",
+              Ytitle = "Billion Cubic Feet")
+```
+
+### 3: Horse race approach
+
+```{r}
+fc_final3 <- forecast_sim(model = md_final,
+                          h = 60, 
+                          n = 500) 
+library(plotly)
+
+fc_final3$plot %>% 
+  layout(title = "US Natural Gas Consumption - Forecasting Simulation",
+         yaxis = list(title = "Billion Cubic Feet"),
+         xaxis = list(title = "Year"))
+```
+
+### 4
+
+```{r}
+# set.seed(1234)
+# 
+# library(TSstudio)
+# 
+# # Sample data (replace with your actual time series data)
+# data(USgas)
+
+# Backtesting with train_model (corrected arguments)
+#USgas_forecast <- train_model(USgas,
+#                              method = "ETS",  # Specify the forecasting method (e.g., ETS)
+#                              h = 60,           # Specify the forecast horizon (number of steps)
+#                              error = "MAPE")  # Specify the error metric (e.g., MAPE)
+# 
+# # Access forecast results
+# forecast <- USgas_forecast$forecast
+# 
+# # Print summary statistics (optional)
+# summary(forecast)  # View basic descriptive statistics
+# 
+# # Plotting options (see previous response for details)
+# 
+# 
+# # Plotting options:
+# 
+# # Option 1: Using autoplot (recommended)
+# library(ggplot2)  # Load ggplot2 for advanced plotting
+# 
+# autoplot(forecast)
+```
+
